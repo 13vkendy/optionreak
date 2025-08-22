@@ -63,22 +63,39 @@ bot.start(async (ctx) => {
 // --- 1) Qabul: kanal postini forward qilish ---
 bot.on('message', async (ctx) => {
   const msg = ctx.message;
-  // Bu handler har qanday xabarga to'g'ri keladi; forward tekshirish:
-  const fwdChat = msg.forward_from_chat;
-  const fwdMsgId = msg.forward_from_message_id;
-  if (!fwdChat || !fwdMsgId) return; // forward emas -> e'tibor bermaymiz
 
-  // Tekshirish: forward qilingan xabar kerakli kanalga tegishli ekanini tekshirish
-  if (String(fwdChat.id) !== String(CHANNEL_ID) && String(fwdChat.username || '') !== String(CHANNEL_ID).replace('@','')) {
-    return ctx.reply('❌ Bu kanal emas yoki noto‘g‘ri kanal post. Iltimos siz sozlagan kanal postini forward qiling.');
+  // Forward turini tekshiramiz
+  let fwdChat = null;
+  let fwdMsgId = null;
+
+  if (msg.forward_from_chat && msg.forward_from_message_id) {
+    // Eski usul (classic forward)
+    fwdChat = msg.forward_from_chat;
+    fwdMsgId = msg.forward_from_message_id;
+  } else if (msg.forward_origin?.chat && msg.forward_origin?.message_id) {
+    // Yangi Telegram API (forward_origin)
+    fwdChat = msg.forward_origin.chat;
+    fwdMsgId = msg.forward_origin.message_id;
   }
 
-  // Yangi monitoring kirish yarating sessionda
+  if (!fwdChat || !fwdMsgId) {
+    return; // forward emas
+  }
+
+  // Kanal ID tekshirish
+  if (
+    String(fwdChat.id) !== String(CHANNEL_ID) &&
+    String(fwdChat.username || '') !== String(CHANNEL_ID).replace('@','')
+  ) {
+    return ctx.reply('❌ Bu kanal emas yoki noto‘g‘ri kanal post. Iltimos sozlagan kanal postini forward qiling.');
+  }
+
+  // Yangi monitoring kirish yarating
   ctx.session.monitor = {
     ownerId: ctx.from.id,
     chatId: fwdChat.id,
     messageId: fwdMsgId,
-    reactions: [], // tanlangan emoji'lar
+    reactions: [],
     threshold: null
   };
 
@@ -87,6 +104,7 @@ bot.on('message', async (ctx) => {
     buildEmojiKeyboard(ctx.session.monitor.reactions)
   );
 });
+
 
 // --- 2) Emoji toggle / done / cancel ---
 bot.action(/^emoji_toggle:(.+)$/, async (ctx) => {
