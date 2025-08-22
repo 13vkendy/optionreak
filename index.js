@@ -64,17 +64,20 @@ bot.start(async (ctx) => {
 bot.on('message', async (ctx) => {
   const msg = ctx.message;
 
+  // 🔑 Agar session bo'sh bo'lsa, bosh obyekt qilib qo'yamiz
+  if (!ctx.session) ctx.session = {};
+
   let fwdChat = null;
   let fwdMsgId = null;
 
   try {
-    // Eski usul (ko‘p hollarda ishlaydi)
+    // Eski forward usuli
     if (msg.forward_from_chat && msg.forward_from_message_id) {
       fwdChat = msg.forward_from_chat;
       fwdMsgId = msg.forward_from_message_id;
     }
 
-    // Yangi usul (sening logingda ham bor ekan)
+    // Yangi forward usuli
     if (!fwdChat && msg.forward_origin?.chat && msg.forward_origin?.message_id) {
       fwdChat = msg.forward_origin.chat;
       fwdMsgId = msg.forward_origin.message_id;
@@ -92,7 +95,7 @@ bot.on('message', async (ctx) => {
       return ctx.reply('❌ Bu sozlangan kanal emas. To‘g‘ri kanal postini yuboring.');
     }
 
-    // Sessionga saqlash
+    // 🔑 Endi sessionga bemalol yozamiz
     ctx.session.monitor = {
       ownerId: ctx.from.id,
       chatId: fwdChat.id,
@@ -110,6 +113,7 @@ bot.on('message', async (ctx) => {
     return ctx.reply("Xatolik yuz berdi. Loglarni tekshirib ko‘ring.");
   }
 });
+
 
 
 
