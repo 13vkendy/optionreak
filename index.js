@@ -64,45 +64,53 @@ bot.start(async (ctx) => {
 bot.on('message', async (ctx) => {
   const msg = ctx.message;
 
-  console.log("📩 Keldi message:", JSON.stringify(msg, null, 2)); // DEBUG uchun
-
   let fwdChat = null;
   let fwdMsgId = null;
 
-  if (msg.forward_from_chat && msg.forward_from_message_id) {
-    // Eski forward usuli
-    fwdChat = msg.forward_from_chat;
-    fwdMsgId = msg.forward_from_message_id;
-  } else if (msg.forward_origin?.chat && msg.forward_origin?.message_id) {
-    // Yangi forward usuli
-    fwdChat = msg.forward_origin.chat;
-    fwdMsgId = msg.forward_origin.message_id;
+  try {
+    // Eski usul (ko‘p hollarda ishlaydi)
+    if (msg.forward_from_chat && msg.forward_from_message_id) {
+      fwdChat = msg.forward_from_chat;
+      fwdMsgId = msg.forward_from_message_id;
+    }
+
+    // Yangi usul (sening logingda ham bor ekan)
+    if (!fwdChat && msg.forward_origin?.chat && msg.forward_origin?.message_id) {
+      fwdChat = msg.forward_origin.chat;
+      fwdMsgId = msg.forward_origin.message_id;
+    }
+
+    if (!fwdChat || !fwdMsgId) {
+      return ctx.reply('❌ Bu forward emas. Kanal postini forward qiling.');
+    }
+
+    // Kanalni tekshirish
+    if (
+      String(fwdChat.id) !== String(CHANNEL_ID) &&
+      String(fwdChat.username || '') !== String(CHANNEL_ID).replace('@','')
+    ) {
+      return ctx.reply('❌ Bu sozlangan kanal emas. To‘g‘ri kanal postini yuboring.');
+    }
+
+    // Sessionga saqlash
+    ctx.session.monitor = {
+      ownerId: ctx.from.id,
+      chatId: fwdChat.id,
+      messageId: fwdMsgId,
+      reactions: [],
+      threshold: null
+    };
+
+    await ctx.reply(
+      `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi qaysi reaksiyalarni kuzatmoqchisiz?`,
+      buildEmojiKeyboard(ctx.session.monitor.reactions)
+    );
+  } catch (err) {
+    console.error("❌ Forward handler error:", err);
+    return ctx.reply("Xatolik yuz berdi. Loglarni tekshirib ko‘ring.");
   }
-
-  if (!fwdChat || !fwdMsgId) {
-    return ctx.reply('❌ Bu forward emas yoki forward_origin kelmadi. Kanal postini forward qiling.');
-  }
-
-  if (
-    String(fwdChat.id) !== String(CHANNEL_ID) &&
-    String(fwdChat.username || '') !== String(CHANNEL_ID).replace('@','')
-  ) {
-    return ctx.reply('❌ Bu sozlangan kanal emas. To‘g‘ri kanal postini yuboring.');
-  }
-
-  ctx.session.monitor = {
-    ownerId: ctx.from.id,
-    chatId: fwdChat.id,
-    messageId: fwdMsgId,
-    reactions: [],
-    threshold: null
-  };
-
-  await ctx.reply(
-    `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi qaysi reaksiyalarni kuzatmoqchisiz?`,
-    buildEmojiKeyboard(ctx.session.monitor.reactions)
-  );
 });
+
 
 
 
@@ -390,4 +398,5 @@ app.get('/', (req, res) => res.send('ok'));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
 
