@@ -114,10 +114,6 @@ bot.on('message', async (ctx) => {
   }
 });
 
-
-
-
-
 // --- 2) Emoji toggle / done / cancel ---
 bot.action(/^emoji_toggle:(.+)$/, async (ctx) => {
   const emoji = ctx.match[1];
@@ -239,7 +235,12 @@ bot.action('confirm_monitor', async (ctx) => {
     const reactionToSet = m.reactions[0];
     if (reactionToSet) {
       // telegraf wrapper: telegram.setMessageReaction(chat_id, message_id, reaction?, is_big?)
-      await bot.telegram.setMessageReaction(m.chatId, m.messageId, reactionToSet, true);
+      await bot.telegram.setMessageReaction(
+      m.chatId,
+      m.messageId,
+      [{ type: 'emoji', emoji: reactionToSet }], // ✅ to‘g‘ri format
+      true
+    );
     }
   } catch (e) {
     console.error('setMessageReaction error', e);
@@ -402,5 +403,6 @@ app.get('/', (req, res) => res.send('ok'));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
 
 
