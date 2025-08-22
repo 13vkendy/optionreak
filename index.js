@@ -64,33 +64,32 @@ bot.start(async (ctx) => {
 bot.on('message', async (ctx) => {
   const msg = ctx.message;
 
-  // Forward turini tekshiramiz
+  console.log("📩 Keldi message:", JSON.stringify(msg, null, 2)); // DEBUG uchun
+
   let fwdChat = null;
   let fwdMsgId = null;
 
   if (msg.forward_from_chat && msg.forward_from_message_id) {
-    // Eski usul (classic forward)
+    // Eski forward usuli
     fwdChat = msg.forward_from_chat;
     fwdMsgId = msg.forward_from_message_id;
   } else if (msg.forward_origin?.chat && msg.forward_origin?.message_id) {
-    // Yangi Telegram API (forward_origin)
+    // Yangi forward usuli
     fwdChat = msg.forward_origin.chat;
     fwdMsgId = msg.forward_origin.message_id;
   }
 
   if (!fwdChat || !fwdMsgId) {
-    return; // forward emas
+    return ctx.reply('❌ Bu forward emas yoki forward_origin kelmadi. Kanal postini forward qiling.');
   }
 
-  // Kanal ID tekshirish
   if (
     String(fwdChat.id) !== String(CHANNEL_ID) &&
     String(fwdChat.username || '') !== String(CHANNEL_ID).replace('@','')
   ) {
-    return ctx.reply('❌ Bu kanal emas yoki noto‘g‘ri kanal post. Iltimos sozlagan kanal postini forward qiling.');
+    return ctx.reply('❌ Bu sozlangan kanal emas. To‘g‘ri kanal postini yuboring.');
   }
 
-  // Yangi monitoring kirish yarating
   ctx.session.monitor = {
     ownerId: ctx.from.id,
     chatId: fwdChat.id,
@@ -100,10 +99,11 @@ bot.on('message', async (ctx) => {
   };
 
   await ctx.reply(
-    `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi qaysi reaksiyalarni kuzatmoqchisiz? (tugmalar bilan tanlang) \nTanlangan: ${prettyList(ctx.session.monitor.reactions)}`,
+    `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi qaysi reaksiyalarni kuzatmoqchisiz?`,
     buildEmojiKeyboard(ctx.session.monitor.reactions)
   );
 });
+
 
 
 // --- 2) Emoji toggle / done / cancel ---
@@ -390,3 +390,4 @@ app.get('/', (req, res) => res.send('ok'));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
