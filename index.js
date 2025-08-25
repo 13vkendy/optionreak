@@ -64,8 +64,7 @@ function setupHandlers(bot) {
     );
   });
 
-  // 🔑 Forward handler (ikkala eski va yangi struktura uchun)
-// 🔑 Forward handler (eski va yangi strukturaga mos)
+// 🔑 Forward handler (ikkala eski va yangi struktura uchun)
 bot.on("message", async (ctx) => {
   try {
     const msg = ctx.message;
@@ -78,7 +77,7 @@ bot.on("message", async (ctx) => {
       fwdMsgId = msg.forward_from_message_id;
     }
 
-    // Yangi forward format (forward_origin)
+    // Yangi forward format
     if (msg.forward_origin?.chat && msg.forward_origin?.message_id) {
       fwdChat = msg.forward_origin.chat;
       fwdMsgId = msg.forward_origin.message_id;
@@ -90,7 +89,7 @@ bot.on("message", async (ctx) => {
 
     // Kanalni tekshirish
     if (String(fwdChat.id) !== String(CHANNEL_ID)) {
-      return ctx.reply("❌ Bu sozlangan kanal emas.");
+      return ctx.reply(`❌ Bu sozlangan kanal emas. ID: ${fwdChat.id}`);
     }
 
     ctx.session.monitor = {
@@ -237,4 +236,5 @@ const bots = TOKENS.map((t) => {
 
 process.once("SIGINT", () => bots.forEach((b) => b.stop("SIGINT")));
 process.once("SIGTERM", () => bots.forEach((b) => b.stop("SIGTERM")));
+
 
