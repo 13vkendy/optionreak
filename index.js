@@ -1,11 +1,11 @@
-// single_text_reaction_bot.js
+// single_text_reaction_bot_fixed.js
 require("dotenv").config();
 const express = require("express");
 const { Telegraf } = require("telegraf");
 
 const TOKENS = process.env.BOT_TOKENS.split(",");
 const CHANNEL_ID = process.env.CHANNEL_ID;
-const OWNER_ID = process.env.OWNER_ID; // faqat sizning Telegram ID
+const OWNER_ID = process.env.OWNER_ID; // sizning ID
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const PORT = process.env.PORT || 3000;
 
@@ -13,6 +13,9 @@ if (!TOKENS || TOKENS.length === 0) {
   console.error("❌ BOT_TOKENS yo‘q!");
   process.exit(1);
 }
+
+// 🔑 Bu yerda owner uchun oxirgi forwardni saqlaymiz
+let lastForward = null;
 
 function setupHandlers(bot) {
   // Forward qabul qilish
@@ -37,9 +40,12 @@ function setupHandlers(bot) {
         return ctx.reply("❌ Bu sozlangan kanal emas.");
       }
 
-      // Session o‘rniga oddiy saqlash
-      ctx.sessionData = { chatId: fwdChat.id, messageId: fwdMsgId };
-      return ctx.reply(`🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi emoji yuboring.`);
+      // global saqlab qo‘yamiz
+      lastForward = { chatId: fwdChat.id, messageId: fwdMsgId };
+
+      return ctx.reply(
+        `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi emoji yuboring.`
+      );
     }
 
     return next();
@@ -48,10 +54,10 @@ function setupHandlers(bot) {
   // Emoji yuborilganda → reaction qo‘yish
   bot.on("text", async (ctx) => {
     if (ctx.from.id != OWNER_ID) return;
-    if (!ctx.sessionData) return;
+    if (!lastForward) return ctx.reply("❌ Avval postni forward qiling.");
 
     const emoji = ctx.message.text.trim();
-    const { chatId, messageId } = ctx.sessionData;
+    const { chatId, messageId } = lastForward;
 
     try {
       await bot.telegram.setMessageReaction(
