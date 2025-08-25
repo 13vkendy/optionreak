@@ -65,38 +65,51 @@ function setupHandlers(bot) {
   });
 
   // 🔑 Forward handler (ikkala eski va yangi struktura uchun)
-  bot.on("message", async (ctx) => {
-    try {
-      const msg = ctx.message;
-      let fwdChat = msg.forward_from_chat;
-      let fwdMsgId = msg.forward_from_message_id;
+// 🔑 Forward handler (eski va yangi strukturaga mos)
+bot.on("message", async (ctx) => {
+  try {
+    const msg = ctx.message;
+    let fwdChat = null;
+    let fwdMsgId = null;
 
-      if (msg.forward_origin?.type === "channel") {
-        fwdChat = msg.forward_origin.chat;
-        fwdMsgId = msg.forward_origin.message_id;
-      }
-
-      if (!fwdChat || !fwdMsgId) return;
-      if (String(fwdChat.id) !== String(CHANNEL_ID)) {
-        return ctx.reply("❌ Bu sozlangan kanal emas.");
-      }
-
-      ctx.session.monitor = {
-        ownerId: ctx.from.id,
-        chatId: fwdChat.id,
-        messageId: fwdMsgId,
-        reactions: [],
-        threshold: null,
-      };
-
-      await ctx.reply(
-        `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi reaksiyalarni tanlang:`,
-        buildEmojiKeyboard([])
-      );
-    } catch (err) {
-      console.error("❌ Forward handler error:", err);
+    // Eski forward format
+    if (msg.forward_from_chat && msg.forward_from_message_id) {
+      fwdChat = msg.forward_from_chat;
+      fwdMsgId = msg.forward_from_message_id;
     }
-  });
+
+    // Yangi forward format (forward_origin)
+    if (msg.forward_origin?.chat && msg.forward_origin?.message_id) {
+      fwdChat = msg.forward_origin.chat;
+      fwdMsgId = msg.forward_origin.message_id;
+    }
+
+    if (!fwdChat || !fwdMsgId) {
+      return ctx.reply("❌ Bu forward emas. Kanal postini forward qiling.");
+    }
+
+    // Kanalni tekshirish
+    if (String(fwdChat.id) !== String(CHANNEL_ID)) {
+      return ctx.reply("❌ Bu sozlangan kanal emas.");
+    }
+
+    ctx.session.monitor = {
+      ownerId: ctx.from.id,
+      chatId: fwdChat.id,
+      messageId: fwdMsgId,
+      reactions: [],
+      threshold: null,
+    };
+
+    await ctx.reply(
+      `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi reaksiyalarni tanlang:`,
+      buildEmojiKeyboard([])
+    );
+  } catch (err) {
+    console.error("❌ Forward handler error:", err);
+  }
+});
+
 
   // Emoji toggle
   bot.action(/^emoji_toggle:(.+)$/, async (ctx) => {
@@ -224,3 +237,4 @@ const bots = TOKENS.map((t) => {
 
 process.once("SIGINT", () => bots.forEach((b) => b.stop("SIGINT")));
 process.once("SIGTERM", () => bots.forEach((b) => b.stop("SIGTERM")));
+
