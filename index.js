@@ -1,7 +1,7 @@
 // multi_reaction_bot.js
 require("dotenv").config();
 const express = require("express");
-const { Telegraf, Markup, session } = require("telegraf");
+const { Telegraf, Markup } = require("telegraf");
 
 // 🔑 Bir nechta tokenlarni o‘qish
 const TOKENS = process.env.BOT_TOKENS.split(",");
@@ -56,84 +56,82 @@ function buildThresholdKeyboard() {
 
 // --- Setup handlerlar ---
 function setupHandlers(bot) {
-  bot.use(session());
-
   bot.start(async (ctx) => {
     await ctx.reply(
       "Salom! Kanal postini forward qiling ➜ emoji tanlang ➜ threshold qo‘ying ➜ tasdiqlang ➜ men monitoring qilaman."
     );
   });
 
-// 🔑 Forward handler (ikkala eski va yangi struktura uchun)
-bot.on("message", async (ctx) => {
-  try {
-    const msg = ctx.message;
-    let fwdChat = null;
-    let fwdMsgId = null;
+  // 🔑 Forward handler — umumiy monitors ga yozadi
+  bot.on("message", async (ctx) => {
+    try {
+      const msg = ctx.message;
+      let fwdChat = null;
+      let fwdMsgId = null;
 
-    // Eski forward format
-    if (msg.forward_from_chat && msg.forward_from_message_id) {
-      fwdChat = msg.forward_from_chat;
-      fwdMsgId = msg.forward_from_message_id;
+      if (msg.forward_from_chat && msg.forward_from_message_id) {
+        fwdChat = msg.forward_from_chat;
+        fwdMsgId = msg.forward_from_message_id;
+      }
+      if (msg.forward_origin?.chat && msg.forward_origin?.message_id) {
+        fwdChat = msg.forward_origin.chat;
+        fwdMsgId = msg.forward_origin.message_id;
+      }
+
+      if (!fwdChat || !fwdMsgId) {
+        return ctx.reply("❌ Bu forward emas. Kanal postini forward qiling.");
+      }
+      if (String(fwdChat.id) !== String(CHANNEL_ID)) {
+        return ctx.reply("❌ Bu sozlangan kanal emas.");
+      }
+
+      const key = mkKey(fwdChat.id, fwdMsgId);
+      monitors.set(key, {
+        ownerId: ctx.from.id,
+        chatId: fwdChat.id,
+        messageId: fwdMsgId,
+        reactions: [],
+        threshold: null,
+      });
+
+      await ctx.reply(
+        `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi reaksiyalarni tanlang:`,
+        buildEmojiKeyboard([])
+      );
+    } catch (err) {
+      console.error("❌ Forward handler error:", err);
     }
-
-    // Yangi forward format
-    if (msg.forward_origin?.chat && msg.forward_origin?.message_id) {
-      fwdChat = msg.forward_origin.chat;
-      fwdMsgId = msg.forward_origin.message_id;
-    }
-
-    if (!fwdChat || !fwdMsgId) {
-      return ctx.reply("❌ Bu forward emas. Kanal postini forward qiling.");
-    }
-
-    // Kanalni tekshirish
-    if (String(fwdChat.id) !== String(CHANNEL_ID)) {
-      return ctx.reply(`❌ Bu sozlangan kanal emas. ID: ${fwdChat.id}`);
-    }
-
-    ctx.session.monitor = {
-      ownerId: ctx.from.id,
-      chatId: fwdChat.id,
-      messageId: fwdMsgId,
-      reactions: [],
-      threshold: null,
-    };
-
-    await ctx.reply(
-      `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi reaksiyalarni tanlang:`,
-      buildEmojiKeyboard([])
-    );
-  } catch (err) {
-    console.error("❌ Forward handler error:", err);
-  }
-});
-
+  });
 
   // Emoji toggle
   bot.action(/^emoji_toggle:(.+)$/, async (ctx) => {
     const emoji = ctx.match[1];
-    if (!ctx.session?.monitor) return ctx.answerCbQuery("Avval postni forward qiling!");
-    const arr = ctx.session.monitor.reactions || [];
+    const key = Array.from(monitors.keys()).pop();
+    const mon = monitors.get(key);
+    if (!mon) return ctx.answerCbQuery("Avval postni forward qiling!");
+    const arr = mon.reactions || [];
     if (arr.includes(emoji)) {
-      ctx.session.monitor.reactions = arr.filter((e) => e !== emoji);
+      mon.reactions = arr.filter((e) => e !== emoji);
     } else {
-      ctx.session.monitor.reactions = [...arr, emoji];
+      mon.reactions = [...arr, emoji];
     }
+    monitors.set(key, mon);
     await ctx.editMessageText(
-      `🟢 Tanlangan: ${prettyList(ctx.session.monitor.reactions)}`,
-      buildEmojiKeyboard(ctx.session.monitor.reactions)
+      `🟢 Tanlangan: ${prettyList(mon.reactions)}`,
+      buildEmojiKeyboard(mon.reactions)
     );
     await ctx.answerCbQuery();
   });
 
   // Done
   bot.action("emoji_done", async (ctx) => {
-    if (!ctx.session?.monitor?.reactions.length)
+    const key = Array.from(monitors.keys()).pop();
+    const mon = monitors.get(key);
+    if (!mon || !mon.reactions.length)
       return ctx.answerCbQuery("Hech narsa tanlanmadi!");
     await ctx.editMessageText(
       `✅ Tanlangan: ${prettyList(
-        ctx.session.monitor.reactions
+        mon.reactions
       )}\nEndi threshold tanlang:`,
       buildThresholdKeyboard()
     );
@@ -143,20 +141,24 @@ bot.on("message", async (ctx) => {
   // Threshold
   bot.action(/^thr:(.+)$/, async (ctx) => {
     const v = ctx.match[1];
-    if (!ctx.session?.monitor) return;
+    const key = Array.from(monitors.keys()).pop();
+    const mon = monitors.get(key);
+    if (!mon) return;
     if (v === "cancel") {
-      ctx.session.monitor = null;
+      monitors.delete(key);
       return ctx.editMessageText("❌ Bekor qilindi.");
     }
     if (v === "custom") {
-      ctx.session.awaitingCustomThreshold = true;
+      mon.awaitingCustomThreshold = true;
+      monitors.set(key, mon);
       return ctx.editMessageText("Kerakli sonni yozing (masalan: 10).");
     }
-    ctx.session.monitor.threshold = parseInt(v, 10) || 1;
+    mon.threshold = parseInt(v, 10) || 1;
+    monitors.set(key, mon);
     await ctx.editMessageText(
       `👀 Monitoring sozlandi.\nReaksiyalar: ${prettyList(
-        ctx.session.monitor.reactions
-      )}\nTrigger: ${ctx.session.monitor.threshold}\n\nTasdiqlaysizmi?`,
+        mon.reactions
+      )}\nTrigger: ${mon.threshold}\n\nTasdiqlaysizmi?`,
       Markup.inlineKeyboard([
         [Markup.button.callback("📌 Tasdiqlash", "confirm_monitor")],
         [Markup.button.callback("❌ Bekor qilish", "cancel_monitor")],
@@ -167,15 +169,15 @@ bot.on("message", async (ctx) => {
 
   // Confirm monitor
   bot.action("confirm_monitor", async (ctx) => {
-    const m = ctx.session.monitor;
-    if (!m) return;
-    monitors.set(mkKey(m.chatId, m.messageId), m);
+    const key = Array.from(monitors.keys()).pop();
+    const mon = monitors.get(key);
+    if (!mon) return;
     try {
-      if (m.reactions[0]) {
+      if (mon.reactions[0]) {
         await bot.telegram.setMessageReaction(
-          m.chatId,
-          m.messageId,
-          [{ type: "emoji", emoji: m.reactions[0] }],
+          mon.chatId,
+          mon.messageId,
+          [{ type: "emoji", emoji: mon.reactions[0] }],
           true
         );
       }
@@ -183,11 +185,10 @@ bot.on("message", async (ctx) => {
       console.error("setMessageReaction error", err);
     }
     await ctx.editMessageText(
-      `✅ Monitoring boshlandi!\nPost: ${m.chatId}:${m.messageId}\nReaksiyalar: ${prettyList(
-        m.reactions
-      )}\nTrigger: ${m.threshold}`
+      `✅ Monitoring boshlandi!\nPost: ${mon.chatId}:${mon.messageId}\nReaksiyalar: ${prettyList(
+        mon.reactions
+      )}\nTrigger: ${mon.threshold}`
     );
-    ctx.session.monitor = null;
   });
 
   // /monitors
@@ -236,5 +237,3 @@ const bots = TOKENS.map((t) => {
 
 process.once("SIGINT", () => bots.forEach((b) => b.stop("SIGINT")));
 process.once("SIGTERM", () => bots.forEach((b) => b.stop("SIGTERM")));
-
-
