@@ -3,7 +3,6 @@ require("dotenv").config();
 const express = require("express");
 const { Telegraf, Markup, session } = require("telegraf");
 
-// 🔑 Bir nechta tokenlarni o‘qish
 const tokens = process.env.BOT_TOKENS.split(",");
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
@@ -25,7 +24,6 @@ function prettyList(arr) {
   return arr && arr.length ? arr.join(" ") : "(hech narsa)";
 }
 
-// --- Inline keyboard builders ---
 function buildEmojiKeyboard(selected = []) {
   const rows = [];
   for (let i = 0; i < EMOJIS.length; i += 4) {
@@ -55,85 +53,65 @@ function buildThresholdKeyboard() {
   ]);
 }
 
-// --- Global handlerlarni ulash funksiyasi ---
+// --- Handlers ---
 function setupHandlers(bot) {
   bot.use(session());
 
   bot.start(async (ctx) => {
     await ctx.reply(
-      "Salom! Kanal postini forward qiling ➜ emoji tanlang ➜ threshold qo‘ying ➜ men monitoring qilaman."
+      "👋 Salom!\nKanal postini forward qiling ➜ emoji tanlang ➜ threshold qo‘ying ➜ men monitoring qilaman."
     );
   });
 
-  // --- Forward message handler ---
   bot.on("message", async (ctx) => {
-    try {
-      const msg = ctx.message;
-      const fwdChat = msg.forward_from_chat;
-      const fwdMsgId = msg.forward_from_message_id;
-      if (!fwdChat || !fwdMsgId) return;
+    const msg = ctx.message;
+    const fwdChat = msg.forward_from_chat;
+    const fwdMsgId = msg.forward_from_message_id;
+    if (!fwdChat || !fwdMsgId) return;
 
-      if (
-        String(fwdChat.id) !== String(CHANNEL_ID) &&
-        String(fwdChat.username || "") !==
-          String(CHANNEL_ID).replace("@", "")
-      ) {
-        return ctx.reply("❌ Bu kanal emas. Faqat sozlangan kanal postini yuboring.");
-      }
-
-      ctx.session.monitor = {
-        ownerId: ctx.from.id,
-        chatId: fwdChat.id,
-        messageId: fwdMsgId,
-        reactions: [],
-        threshold: null,
-      };
-
-      await ctx.reply(
-        `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi qaysi reaksiyalarni kuzatmoqchisiz?`,
-        buildEmojiKeyboard([])
-      );
-    } catch (err) {
-      console.error("❌ Forward handler error:", err);
+    if (String(fwdChat.id) !== String(CHANNEL_ID)) {
+      return ctx.reply("❌ Bu kanal emas. Faqat sozlangan kanal postini yuboring.");
     }
+
+    ctx.session.monitor = {
+      ownerId: ctx.from.id,
+      chatId: fwdChat.id,
+      messageId: fwdMsgId,
+      reactions: [],
+      threshold: null,
+    };
+
+    await ctx.reply(
+      `🟢 Post qabul qilindi.\nID: ${fwdChat.id}:${fwdMsgId}\nEndi qaysi reaksiyalarni kuzatmoqchisiz?`,
+      buildEmojiKeyboard([])
+    );
   });
 
-  // --- Emoji toggle ---
   bot.action(/^emoji_toggle:(.+)$/, async (ctx) => {
     const emoji = ctx.match[1];
-    if (!ctx.session?.monitor || ctx.from.id !== ctx.session.monitor.ownerId) {
-      return ctx.answerCbQuery("Avval postni forward qiling!");
-    }
+    if (!ctx.session?.monitor) return ctx.answerCbQuery("Avval postni forward qiling!");
     const arr = ctx.session.monitor.reactions || [];
-    if (arr.includes(emoji)) {
-      ctx.session.monitor.reactions = arr.filter((e) => e !== emoji);
-    } else {
-      ctx.session.monitor.reactions = [...arr, emoji];
-    }
+    ctx.session.monitor.reactions = arr.includes(emoji)
+      ? arr.filter((e) => e !== emoji)
+      : [...arr, emoji];
     await ctx.editMessageText(
-      `🟢 Tanlangan reaksiyalar: ${prettyList(
-        ctx.session.monitor.reactions
-      )}`,
+      `🟢 Tanlangan reaksiyalar: ${prettyList(ctx.session.monitor.reactions)}`,
       buildEmojiKeyboard(ctx.session.monitor.reactions)
     );
     await ctx.answerCbQuery();
   });
 
-  // --- Emoji done ---
   bot.action("emoji_done", async (ctx) => {
     if (!ctx.session?.monitor) return ctx.answerCbQuery("Avval postni forward qiling!");
     if (!ctx.session.monitor.reactions.length)
       return ctx.answerCbQuery("Hech narsa tanlanmadi!");
     await ctx.editMessageText(
-      `✅ Tanlangan: ${prettyList(
-        ctx.session.monitor.reactions
-      )}\nEndi threshold tanlang:`,
+      `✅ Tanlangan: ${prettyList(ctx.session.monitor.reactions)}\nEndi threshold tanlang:`,
       buildThresholdKeyboard()
     );
     await ctx.answerCbQuery();
   });
 
-  // --- Threshold ---
   bot.action(/^thr:(.+)$/, async (ctx) => {
     const v = ctx.match[1];
     if (!ctx.session?.monitor) return;
@@ -147,9 +125,7 @@ function setupHandlers(bot) {
     }
     ctx.session.monitor.threshold = parseInt(v, 10) || 1;
     await ctx.editMessageText(
-      `👀 Monitoring sozlandi.\nReaksiyalar: ${prettyList(
-        ctx.session.monitor.reactions
-      )}\nTrigger: ${ctx.session.monitor.threshold}\n\nTasdiqlaysizmi?`,
+      `👀 Monitoring sozlandi.\nReaksiyalar: ${prettyList(ctx.session.monitor.reactions)}\nTrigger: ${ctx.session.monitor.threshold}\n\nTasdiqlaysizmi?`,
       Markup.inlineKeyboard([
         [Markup.button.callback("📌 Tasdiqlash", "confirm_monitor")],
         [Markup.button.callback("❌ Bekor qilish", "cancel_monitor")],
@@ -158,41 +134,29 @@ function setupHandlers(bot) {
     await ctx.answerCbQuery();
   });
 
-  // --- Confirm monitor ---
   bot.action("confirm_monitor", async (ctx) => {
     const m = ctx.session.monitor;
     if (!m) return;
-    const key = mkKey(m.chatId, m.messageId);
-    monitors.set(key, m);
+    monitors.set(mkKey(m.chatId, m.messageId), m);
     try {
       if (m.reactions[0]) {
-        await bot.telegram.setMessageReaction(
-          m.chatId,
-          m.messageId,
-          m.reactions[0],
-          true
-        );
+        await bot.telegram.setMessageReaction(m.chatId, m.messageId, m.reactions[0], true);
       }
     } catch (err) {
       console.error("setMessageReaction error", err);
     }
     await ctx.editMessageText(
-      `✅ Monitoring boshlandi!\nPost: ${m.chatId}:${m.messageId}\nReaksiyalar: ${prettyList(
-        m.reactions
-      )}\nTrigger: ${m.threshold}`
+      `✅ Monitoring boshlandi!\nPost: ${m.chatId}:${m.messageId}\nReaksiyalar: ${prettyList(m.reactions)}\nTrigger: ${m.threshold}`
     );
     ctx.session.monitor = null;
   });
 
-  // --- Monitor list ---
   bot.command("monitors", async (ctx) => {
     const userId = ctx.from.id;
     const list = [];
     for (const [k, m] of monitors.entries()) {
       if (m.ownerId === userId) {
-        list.push(
-          `${k} — ${prettyList(m.reactions)} — thr: ${m.threshold}`
-        );
+        list.push(`${k} — ${prettyList(m.reactions)} — thr: ${m.threshold}`);
       }
     }
     if (!list.length) return ctx.reply("Sizda monitorlar yo‘q.");
@@ -200,11 +164,11 @@ function setupHandlers(bot) {
   });
 }
 
-// --- Har bir token uchun bot yaratish ---
+// --- Multi-bot yaratish ---
 const bots = tokens.map((t) => {
-  const b = new Telegraf(t.trim(), { handlerTimeout: 10000 });
-  setupHandlers(b);
-  return b;
+  const bot = new Telegraf(t.trim(), { handlerTimeout: 10000 });
+  setupHandlers(bot);
+  return bot;
 });
 
 // --- Launch ---
